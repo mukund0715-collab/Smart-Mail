@@ -1,0 +1,37 @@
+<!-- frontend/templates/frontend/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Insight Mail Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Retrieve Django CSRF token from cookies
+        function getCookie(name) {
+            let value = `; ${document.cookie}`;
+            let parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+        
+        // Shared fetch helper for JSON POST requests
+        async function apiPost(url, data) {
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(data)
+            }).then(res => res.json());
+        }
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-8">
+    <nav class="mb-8 flex items-center justify-between">
+        <a href="/" class="font-bold text-2xl text-blue-600">Insight Mail</a>
+        <a href="/admin/" class="text-sm text-gray-500 hover:underline">Admin Panel</a>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
