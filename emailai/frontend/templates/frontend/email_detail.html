@@ -1,0 +1,122 @@
+{% extends "frontend/base.html" %}
+{% block title %}{{ email.subject|default:"(no subject)" }} · Smart-Mail{% endblock %}
+
+{% block content %}
+<a class="back-link" href="{% url 'dashboard' %}">← Back to inbox</a>
+
+<div class="detail-header">
+  <h1>{{ email.subject|default:"(no subject)" }}</h1>
+  <div class="from">From {{ email.sender_email }} · {{ email.received_at|date:"M j, Y g:i A" }}</div>
+
+  <div class="badge-row">
+    {% if email.metadata %}
+      <span class="badge badge-intent">{{ email.metadata.get_intent_category_display|default:"Unclassified" }}</span>
+      <div class="sentiment-bar" data-score="{{ email.metadata.sentiment_score|default:0 }}" title="Sentiment: {{ email.metadata.sentiment_score }}">
+        <div class="fill"></div>
+      </div>
+    {% else %}
+      <span class="badge badge-muted">Still processing</span>
+    {% endif %}
+
+    {% if email.metadata.priority_flag %}
+      <span class="badge badge-priority">Priority — expedite</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Original message</h2>
+  <div class="body-text">{{ email.raw_body }}</div>
+</div>
+
+{% if email.action_items.all %}
+<div class="panel">
+  <h2>Action items</h2>
+  {% for item in email.action_items.all %}
+    <div class="action-item {% if item.is_completed %}completed{% endif %}" data-item-id="{{ item.pk }}">
+      <input type="checkbox" {% if item.is_completed %}checked{% endif %}
+             data-url="{% url 'toggle-action-item' item.pk %}">
+      <div>
+        <div class="task-text">{{ item.task_description }}</div>
+        {% if item.deadline %}
+          <div class="deadline">Due {{ item.deadline|date:"M j, Y g:i A" }}</div>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if email.generated_reply %}
+<div class="panel">
+  <h2>Draft reply {% if email.generated_reply.approved %}<span class="badge badge-ok">Approved</span>{% else %}<span class="badge badge-pending">Needs review</span>{% endif %}</h2>
+  {% if email.generated_reply.summary %}
+    <p class="body-text" style="color: var(--text-dim); margin-top: 0;">{{ email.generated_reply.summary }}</p>
+  {% endif %}
+  <textarea id="reply-editor" class="reply-editor">{{ email.generated_reply.draft_body }}</textarea>
+  <div class="reply-actions">
+    <button class="btn" id="save-approve-btn" data-url="{% url 'update-reply' email.pk %}">
+      {% if email.generated_reply.approved %}Save changes{% else %}Approve & save{% endif %}
+    </button>
+    <button class="btn secondary" id="save-draft-btn" data-url="{% url 'update-reply' email.pk %}">Save without approving</button>
+    <span class="save-status" id="save-status"></span>
+  </div>
+</div>
+{% endif %}
+
+{% if email.metadata.deanonymization_map %}
+<div class="panel">
+  <details class="pii-panel">
+    <summary>PII de-anonymization map ({{ email.metadata.deanonymization_map|length }} entities) — sensitive, audit use only</summary>
+    <div class="pii-map">
+      {% for token, value in email.metadata.deanonymization_map.items %}
+        <div class="row"><span class="token">{{ token }}</span><span>{{ value }}</span></div>
+      {% endfor %}
+    </div>
+  </details>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.querySelectorAll('.action-item input[type="checkbox"]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async () => {
+      const row = checkbox.closest('.action-item');
+      checkbox.disabled = true;
+      try {
+        const result = await apiPost(checkbox.dataset.url, {});
+        row.classList.toggle('completed', result.is_completed);
+      } catch (err) {
+        checkbox.checked = !checkbox.checked; // revert on failure
+        alert('Could not update this item: ' + err.message);
+      } finally {
+        checkbox.disabled = false;
+      }
+    });
+  });
+
+  const editor = document.getElementById('reply-editor');
+  const status = document.getElementById('save-status');
+
+  async function saveReply(approved, button) {
+    button.disabled = true;
+    status.textContent = 'Saving…';
+    try {
+      const result = await apiPost(button.dataset.url, {
+        draft_body: editor.value,
+        approved: approved,
+      });
+      status.textContent = result.approved ? 'Saved and approved ✓' : 'Saved ✓';
+    } catch (err) {
+      status.textContent = 'Failed to save: ' + err.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  document.getElementById('save-approve-btn').addEventListener('click', (e) => saveReply(true, e.target));
+  document.getElementById('save-draft-btn').addEventListener('click', (e) => saveReply(false, e.target));
+</script>
+{% endblock %}
